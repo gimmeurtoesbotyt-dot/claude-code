@@ -1,0 +1,1102 @@
+<title>ZnA Job Log</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,500..800&family=Public+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a working app shell. Sticky header with sync state, tab bar, one panel at a time.
+   Summary (KPIs, who to call) sits above detail (charts, tables). */
+:root {
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --sunken: #e5e9ee;
+  --ink: #141a21;
+  --ink-2: #46515d;
+  --muted: #76828f;
+  --line: #d9dfe6;
+  --accent: #1f55c2;
+  --accent-ink: #ffffff;
+  --accent-soft: #e2eafb;
+  --good: #1c7a4c;
+  --good-soft: #dcf1e6;
+  --warn: #9a5b00;
+  --warn-soft: #fbecd2;
+  --crit: #b3261e;
+  --crit-soft: #f9dedb;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1216; --surface: #161c22; --sunken: #1d242c; --ink: #e6eaef; --ink-2: #aeb8c3;
+    --muted: #7f8b97; --line: #2a333d; --accent: #7aa2ff; --accent-ink: #0b1220; --accent-soft: #1c2944;
+    --good: #52c68d; --good-soft: #15301f; --warn: #e7a84a; --warn-soft: #36270f; --crit: #f07368; --crit-soft: #3a1a18;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1216; --surface: #161c22; --sunken: #1d242c; --ink: #e6eaef; --ink-2: #aeb8c3;
+  --muted: #7f8b97; --line: #2a333d; --accent: #7aa2ff; --accent-ink: #0b1220; --accent-soft: #1c2944;
+  --good: #52c68d; --good-soft: #15301f; --warn: #e7a84a; --warn-soft: #36270f; --crit: #f07368; --crit-soft: #3a1a18;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.num { font-variant-numeric: tabular-nums; }
+
+header.top {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
+  background: var(--bg); border-bottom: 1px solid var(--line);
+}
+.top-inner, main { max-width: 1120px; margin: 0 auto; padding-inline: 16px; }
+.top-row { display: flex; align-items: center; gap: 12px; padding-block: 14px 10px; flex-wrap: wrap; }
+.brand { font-family: var(--font-display); font-stretch: 125%; font-weight: 800; font-size: 20px; letter-spacing: -0.01em; margin: 0; }
+.brand small { font-stretch: 100%; font-weight: 500; font-size: 13px; color: var(--muted); margin-left: 8px; letter-spacing: 0; }
+.sync { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-2); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
+.dot.ok { background: var(--good); }
+.dot.bad { background: var(--crit); }
+.btn {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 6px 12px;
+  cursor: pointer; font-weight: 500; font-size: 14px;
+}
+.btn:hover { border-color: var(--ink-2); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+.btn.small { padding: 3px 9px; font-size: 13px; }
+nav.tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+nav.tabs button {
+  border: 0; background: none; padding: 8px 12px 10px; cursor: pointer; font-weight: 600; font-size: 14px;
+  color: var(--ink-2); border-bottom: 2px solid transparent; white-space: nowrap;
+}
+nav.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+
+main { padding-block: 20px 48px; display: grid; gap: 20px; }
+main > *, main > * > div { min-width: 0; }
+h2 { font-family: var(--font-display); font-stretch: 112%; font-weight: 700; font-size: 17px; margin: 0; text-wrap: balance; }
+.eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; min-width: 0; }
+.card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.sub { color: var(--muted); font-size: 13px; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 20px; }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px; }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 2px; }
+.kpi .v { font-family: var(--font-display); font-stretch: 110%; font-weight: 700; font-size: 28px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.kpi .d { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.kpi .d .up { color: var(--good); font-weight: 600; }
+.kpi .d .down { color: var(--crit); font-weight: 600; }
+
+.pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill.due { background: var(--warn-soft); color: var(--warn); }
+.pill.over { background: var(--crit-soft); color: var(--crit); }
+.pill.ok { background: var(--good-soft); color: var(--good); }
+.pill.one { background: var(--sunken); color: var(--ink-2); }
+.tag { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 0 6px; }
+
+.people { display: grid; gap: 0; }
+.person { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 10px 0; border-top: 1px solid var(--line); align-items: center; }
+.person:first-child { border-top: 0; padding-top: 0; }
+.person .name { font-weight: 600; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+.person .name:hover { color: var(--accent); text-decoration: underline; }
+.person .meta { grid-column: 1 / -1; color: var(--ink-2); font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
+.phone { font-variant-numeric: tabular-nums; user-select: all; }
+.copy { border: 0; background: none; color: var(--accent); cursor: pointer; font-size: 12px; font-weight: 600; padding: 0 2px; }
+
+.bars { display: grid; gap: 10px; }
+.bar-row { display: grid; grid-template-columns: minmax(0, 9.5rem) 1fr auto; gap: 10px; align-items: center; font-size: 14px; }
+.bar-row .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-track { height: 10px; background: var(--sunken); border-radius: 4px; overflow: hidden; }
+.bar-fill { height: 100%; background: var(--accent); border-radius: 0 4px 4px 0; }
+.bar-row .val { font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 13px; min-width: 7.5rem; text-align: right; }
+
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: auto; }
+.chart svg text { fill: var(--muted); font-size: 11px; font-family: var(--font-body); }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .b { fill: var(--accent); }
+.chart .b.dim { opacity: .45; }
+.chart .hit { fill: transparent; cursor: default; }
+.tip {
+  position: absolute; pointer-events: none; background: var(--ink); color: var(--bg); font-size: 12px;
+  padding: 6px 9px; border-radius: 6px; white-space: nowrap; transform: translate(-50%, -100%); font-variant-numeric: tabular-nums;
+}
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.toolbar input[type="search"], .toolbar select, .field input, .field select, .field textarea {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; min-width: 0;
+}
+.toolbar input[type="search"] { flex: 1 1 220px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 4px 11px; font-size: 13px; cursor: pointer; font-weight: 500; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+
+.table-wrap { overflow-x: auto; margin-inline: -16px; padding-inline: 16px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); padding: 6px 10px 8px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
+tr.click { cursor: pointer; }
+tr.click:hover td { background: var(--sunken); }
+td .second { color: var(--muted); font-size: 12px; }
+.summary-line { font-size: 13px; color: var(--ink-2); margin-bottom: 10px; font-variant-numeric: tabular-nums; }
+
+.banner { border-radius: var(--radius); padding: 12px 14px; font-size: 14px; border: 1px solid; }
+.banner.err { background: var(--crit-soft); color: var(--ink); border-color: var(--crit); }
+.banner.info { background: var(--accent-soft); color: var(--ink); border-color: var(--accent); }
+.empty { text-align: center; padding: 48px 16px; color: var(--ink-2); }
+.empty h2 { margin-bottom: 6px; }
+.skel { height: 14px; border-radius: 4px; background: var(--sunken); }
+
+form.log { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 14px; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field label { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.field .hint { font-size: 12px; color: var(--muted); }
+.field.wide { grid-column: 1 / -1; }
+.form-foot { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.calc { font-size: 14px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.msg { font-size: 14px; }
+.msg.ok { color: var(--good); }
+.msg.bad { color: var(--crit); }
+
+.sheet-backdrop { position: fixed; inset: 0; background: rgba(8, 12, 18, .45); z-index: 40; }
+.sheet {
+  position: fixed; z-index: 41; top: 0; right: 0; bottom: 0; width: min(560px, 100%); background: var(--bg);
+  border-left: 1px solid var(--line); overflow-y: auto;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) 16px calc(24px + env(safe-area-inset-bottom, 0px));
+  display: grid; gap: 16px; align-content: start;
+}
+.sheet h2 { font-size: 22px; }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+.stat .v { font-family: var(--font-display); font-stretch: 110%; font-weight: 700; font-size: 18px; font-variant-numeric: tabular-nums; }
+.vehicles { display: flex; gap: 6px; flex-wrap: wrap; }
+.vehicles span { background: var(--sunken); border-radius: 6px; padding: 2px 8px; font-size: 13px; }
+
+.chat { display: grid; gap: 12px; }
+.bubble { border-radius: var(--radius); padding: 12px 14px; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
+.bubble.me { background: var(--accent-soft); justify-self: end; max-width: 85%; }
+.bubble.bot { background: var(--surface); border: 1px solid var(--line); }
+.ask-row { display: flex; gap: 8px; }
+.ask-row textarea { flex: 1; min-height: 44px; resize: vertical; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; min-width: 0; }
+.toast {
+  position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  background: var(--ink); color: var(--bg); padding: 9px 14px; border-radius: 8px; font-size: 14px; z-index: 60;
+}
+@media (max-width: 560px) {
+  .bar-row { grid-template-columns: minmax(0, 7rem) 1fr; }
+  .bar-row .val { grid-column: 1 / -1; text-align: left; min-width: 0; margin-top: -6px; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hide-sm { display: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .bar-fill { transition: width .3s ease; }
+}
+</style>
+
+<header class="top">
+  <div class="top-inner">
+    <div class="top-row">
+      <h1 class="brand">ZnA Job Log<small>Detailing CRM</small></h1>
+      <div class="sync">
+        <span class="dot" id="syncDot"></span>
+        <span id="syncText">Connecting to Google Sheets…</span>
+        <button class="btn small" id="refreshBtn" type="button">Refresh</button>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button role="tab" data-tab="overview" aria-selected="true" id="tab-overview">Overview</button>
+      <button role="tab" data-tab="clients" aria-selected="false" id="tab-clients">Clients</button>
+      <button role="tab" data-tab="jobs" aria-selected="false" id="tab-jobs">Jobs</button>
+      <button role="tab" data-tab="log" aria-selected="false" id="tab-log">Log a job</button>
+      <button role="tab" data-tab="ask" aria-selected="false" id="tab-ask">Ask Claude</button>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <div id="banners"></div>
+
+  <section data-panel="overview" id="panel-overview"></section>
+
+  <section data-panel="clients" id="panel-clients" hidden>
+    <div class="card">
+      <div class="toolbar">
+        <input type="search" id="clientSearch" placeholder="Search name, phone or vehicle" aria-label="Search clients">
+        <select id="clientSort" aria-label="Sort clients">
+          <option value="last">Most recent visit</option>
+          <option value="spend">Lifetime spend</option>
+          <option value="visits">Most visits</option>
+          <option value="due">Most overdue</option>
+          <option value="name">Name A–Z</option>
+        </select>
+      </div>
+      <div class="chips" id="clientFilter" style="margin-bottom:12px">
+        <button class="chip" data-f="all" aria-pressed="true" type="button">All</button>
+        <button class="chip" data-f="due" aria-pressed="false" type="button">Due or overdue</button>
+        <button class="chip" data-f="repeat" aria-pressed="false" type="button">Repeat</button>
+        <button class="chip" data-f="one" aria-pressed="false" type="button">One-time</button>
+      </div>
+      <div id="clientList"></div>
+    </div>
+  </section>
+
+  <section data-panel="jobs" id="panel-jobs" hidden>
+    <div class="card">
+      <div class="toolbar">
+        <input type="search" id="jobSearch" placeholder="Search client, vehicle or note" aria-label="Search jobs">
+        <select id="jobService" aria-label="Filter by service"><option value="">All services</option></select>
+        <select id="jobMonth" aria-label="Filter by month"><option value="">All months</option></select>
+      </div>
+      <div id="jobList"></div>
+    </div>
+  </section>
+
+  <section data-panel="log" id="panel-log" hidden>
+    <div class="card">
+      <div class="card-head">
+        <h2>Log a job</h2>
+        <span class="sub">Saves a row to the <b>App Log</b> tab. Your Google Form keeps working as before.</span>
+      </div>
+      <form class="log" id="logForm" autocomplete="off">
+        <div class="field">
+          <label for="f-client">Client</label>
+          <input id="f-client" list="clientNames" required placeholder="Name or business">
+          <datalist id="clientNames"></datalist>
+          <span class="hint" id="f-client-hint">Pick an existing client to fill in their phone.</span>
+        </div>
+        <div class="field">
+          <label for="f-date">Date of service</label>
+          <input id="f-date" type="date" required>
+        </div>
+        <div class="field">
+          <label for="f-vehicle">Vehicle</label>
+          <input id="f-vehicle" list="vehicleNames" placeholder="Year, make, model or color">
+          <datalist id="vehicleNames"></datalist>
+        </div>
+        <div class="field">
+          <label for="f-service">Service</label>
+          <select id="f-service" required></select>
+        </div>
+        <div class="field" id="f-service-other-wrap" hidden>
+          <label for="f-service-other">Service name</label>
+          <input id="f-service-other" placeholder="e.g. Headlight restoration">
+        </div>
+        <div class="field">
+          <label for="f-price">Price ($)</label>
+          <input id="f-price" type="number" inputmode="decimal" min="0" step="0.01" placeholder="265">
+          <span class="hint">Leave blank for trades or comped jobs and say so in the notes.</span>
+        </div>
+        <div class="field">
+          <label for="f-payment">Payment method</label>
+          <select id="f-payment">
+            <option>Payment App</option><option>Cash</option><option>Check</option><option>Card</option><option>Other</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-phone">Client phone</label>
+          <input id="f-phone" type="tel" inputmode="tel" placeholder="(480) 555-0123">
+        </div>
+        <div class="field">
+          <label for="f-hours">Time spent (hours)</label>
+          <input id="f-hours" type="number" inputmode="decimal" min="0" step="0.25" placeholder="3">
+        </div>
+        <div class="field wide">
+          <label for="f-notes">Notes</label>
+          <textarea id="f-notes" rows="2" placeholder="Interior only, pet hair, referral from…"></textarea>
+        </div>
+        <div class="form-foot">
+          <button class="btn primary" id="f-submit" type="submit">Add to sheet</button>
+          <span class="calc" id="f-calc"></span>
+          <span class="msg" id="f-msg" role="status"></span>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section data-panel="ask" id="panel-ask" hidden>
+    <div class="card">
+      <div class="card-head">
+        <h2>Ask Claude about your jobs</h2>
+        <span class="sub">Claude reads the job log you see here. Answers use your Claude plan.</span>
+      </div>
+      <div class="chips" id="askSuggest" style="margin-bottom:14px">
+        <button class="chip" type="button">Who should I reach out to this week, and why?</button>
+        <button class="chip" type="button">How did this month compare to last month?</button>
+        <button class="chip" type="button">Which service earns me the best hourly rate?</button>
+        <button class="chip" type="button">Draft a short text to clients I haven't seen in 60+ days.</button>
+      </div>
+      <div class="chat" id="chat"></div>
+      <div class="ask-row" style="margin-top:14px">
+        <textarea id="askInput" rows="2" placeholder="Ask anything about your clients, revenue or schedule"></textarea>
+        <div style="display:grid;gap:6px;align-content:start">
+          <button class="btn primary" id="askBtn" type="button">Ask</button>
+          <button class="btn" id="stopBtn" type="button" hidden>Stop</button>
+        </div>
+      </div>
+      <p class="msg bad" id="askMsg" role="status"></p>
+    </div>
+  </section>
+</main>
+
+<div id="overlay"></div>
+<div id="toast" class="toast" hidden></div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---- Configuration -------------------------------------------------------
+  const SHEET_ID = "__SHEET_ID__"; // the ID from your sheet's link: docs.google.com/spreadsheets/d/<ID>/...
+  const SERVER = "Google Sheets";
+  const SOURCES = [
+    { key: "form", label: "Form Responses 1", range: "'Form Responses 1'!A1:K5000" },
+    { key: "app", label: "App Log", range: "'App Log'!A1:K5000" },
+  ];
+  const APPEND_RANGE = "'App Log'!A1";
+  const DEFAULT_SERVICES = ["Basic Package", "Premium Package", "Maintenance", "Paint Correction", "Ceramic Coating", "Wax", "Exterior only"];
+
+  // ---- State ---------------------------------------------------------------
+  const S = {
+    mcp: undefined, sample: undefined,
+    raw: { form: null, app: null }, err: { form: null, app: null }, stamp: { form: 0, app: 0 },
+    jobs: [], clients: [], byId: new Map(),
+    tab: "overview", clientFilter: "all", openClient: null,
+    chat: [], askCtl: null,
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const DAY = 86400000;
+  const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  const fmtMoney = (n, cents) => n == null || isNaN(n) ? "—" :
+    "$" + n.toLocaleString("en-US", { minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 });
+  const fmtDate = (d) => !d ? "—" : MONTHS[d.getMonth()] + " " + d.getDate() + (d.getFullYear() !== today().getFullYear() ? ", " + d.getFullYear() : "");
+  const fmtHours = (h) => h == null ? "—" : (Math.round(h * 100) / 100) + " h";
+  const daysBetween = (a, b) => Math.round((b - a) / DAY);
+  const ago = (d) => {
+    if (!d) return "—";
+    const n = daysBetween(d, today());
+    if (n <= 0) return "today";
+    if (n === 1) return "yesterday";
+    if (n < 60) return n + " days ago";
+    return Math.round(n / 30.4) + " months ago";
+  };
+  const fmtPhone = (p) => p ? "(" + p.slice(0, 3) + ") " + p.slice(3, 6) + "-" + p.slice(6) : "";
+  const monthKey = (d) => d.getFullYear() * 12 + d.getMonth();
+  const monthLabel = (k, long) => MONTHS[k % 12] + (long ? " " + Math.floor(k / 12) : "");
+
+  // ---- Parsing -------------------------------------------------------------
+  function parseDate(s) {
+    const m = String(s || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+    if (!m) return null;
+    let y = +m[3]; if (y < 100) y += 2000;
+    const d = new Date(y, +m[1] - 1, +m[2]);
+    return isNaN(d) ? null : d;
+  }
+  function parseMoney(s) {
+    const t = String(s ?? "").replace(/[$,\s]/g, "");
+    if (!/^-?\d+(\.\d+)?$/.test(t)) return null;
+    return parseFloat(t);
+  }
+  function parseNum(s) {
+    const n = parseFloat(String(s ?? "").replace(/[^0-9.]/g, ""));
+    return isNaN(n) ? null : n;
+  }
+  function parsePhone(s) {
+    const d = String(s ?? "").replace(/\D/g, "");
+    return d.length >= 10 ? d.slice(-10) : null;
+  }
+  const clean = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
+
+  function colIndex(header, tests, fallback) {
+    const h = header.map((x) => clean(x).toLowerCase());
+    for (const t of tests) { const i = h.findIndex((x) => x.includes(t)); if (i >= 0) return i; }
+    return fallback;
+  }
+
+  function rowsToJobs(values, source) {
+    if (!Array.isArray(values) || !values.length) return [];
+    const header = values[0] || [];
+    const c = {
+      ts: colIndex(header, ["timestamp"], 0),
+      client: colIndex(header, ["client info", "client name", "client"], 1),
+      date: colIndex(header, ["date of service", "date"], 2),
+      vehicle: colIndex(header, ["vehicle"], 3),
+      service: colIndex(header, ["service provided", "service type", "services"], 4),
+      price: colIndex(header, ["pricing", "price"], 5),
+      pay: colIndex(header, ["payment"], 6),
+      phone: colIndex(header, ["phone"], 7),
+      hours: colIndex(header, ["time spent", "hours"], 8),
+      notes: colIndex(header, ["notes", "tip", "column 11"], 10),
+    };
+    const out = [];
+    for (let r = 1; r < values.length; r++) {
+      const row = values[r] || [];
+      const client = clean(row[c.client]);
+      const date = parseDate(row[c.date]) || parseDate(row[c.ts]);
+      if (!client && !date) continue;
+      const price = parseMoney(row[c.price]);
+      const hours = parseNum(row[c.hours]);
+      const phoneRaw = clean(row[c.phone]);
+      out.push({
+        id: source + ":" + (r + 1), source, row: r + 1,
+        client: client || "Unnamed client", date,
+        vehicle: clean(row[c.vehicle]), service: clean(row[c.service]) || "Unspecified",
+        price, priceRaw: clean(row[c.price]), payment: clean(row[c.pay]) || "—",
+        phone: parsePhone(phoneRaw), phoneRaw,
+        hours, rate: price != null && hours ? price / hours : null,
+        notes: clean(row[c.notes]),
+      });
+    }
+    return out;
+  }
+
+  // Group jobs into clients: same normalized name, or same phone number, is the same client.
+  function buildClients(jobs) {
+    const parent = new Map();
+    const find = (k) => { while (parent.get(k) !== k) { parent.set(k, parent.get(parent.get(k))); k = parent.get(k); } return k; };
+    const add = (k) => { if (!parent.has(k)) parent.set(k, k); };
+    const union = (a, b) => { add(a); add(b); const ra = find(a), rb = find(b); if (ra !== rb) parent.set(rb, ra); };
+    const nameKey = (j) => "n:" + j.client.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+    for (const j of jobs) { add(nameKey(j)); if (j.phone) union(nameKey(j), "p:" + j.phone); }
+    const groups = new Map();
+    for (const j of jobs) { const r = find(nameKey(j)); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(j); }
+
+    const t0 = today();
+    const clients = [];
+    let n = 0;
+    for (const list of groups.values()) {
+      list.sort((a, b) => (b.date || 0) - (a.date || 0));
+      const counts = new Map();
+      list.forEach((j, i) => { const c = counts.get(j.client) || { n: 0, i }; c.n++; counts.set(j.client, c); });
+      const name = [...counts.entries()].sort((a, b) => b[1].n - a[1].n || a[1].i - b[1].i)[0][0];
+      const dates = [...new Set(list.filter((j) => j.date).map((j) => +j.date))].sort((a, b) => a - b);
+      const last = dates.length ? new Date(dates[dates.length - 1]) : null;
+      const first = dates.length ? new Date(dates[0]) : null;
+      const interval = dates.length >= 2 ? (dates[dates.length - 1] - dates[0]) / DAY / (dates.length - 1) : null;
+      const since = last ? daysBetween(last, t0) : null;
+      let status = "one";
+      if (dates.length >= 2 && interval != null) {
+        const typical = Math.max(interval, 7);
+        const ratio = since / typical;
+        status = ratio >= 2 && since >= 21 ? "over" : ratio >= 1 && since >= 10 ? "due" : "ok";
+      }
+      const vehicles = [];
+      const seenV = new Set();
+      for (const j of list) { const k = j.vehicle.toLowerCase(); if (j.vehicle && !seenV.has(k)) { seenV.add(k); vehicles.push(j.vehicle); } }
+      clients.push({
+        id: "c" + (n++), name, aliases: [...counts.keys()],
+        phone: (list.find((j) => j.phone) || {}).phone || null,
+        jobs: list, visits: list.length, spend: list.reduce((s, j) => s + (j.price || 0), 0),
+        first, last, interval, since, status, vehicles,
+        overdueBy: interval != null && since != null ? since / Math.max(interval, 7) : 0,
+      });
+    }
+    return clients;
+  }
+
+  function recompute() {
+    const jobs = [...rowsToJobs(S.raw.form, "form"), ...rowsToJobs(S.raw.app, "app")];
+    jobs.sort((a, b) => (b.date || 0) - (a.date || 0));
+    S.jobs = jobs;
+    S.clients = buildClients(jobs);
+    S.byId = new Map(S.clients.map((c) => [c.id, c]));
+    S.jobClient = new Map();
+    for (const c of S.clients) for (const j of c.jobs) S.jobClient.set(j.id, c);
+  }
+
+  // ---- Connector access ----------------------------------------------------
+  const ERROR_COPY = {
+    needs_reauth: "Google Sheets needs to be reconnected. Reconnect it in claude.ai Settings → Connectors, then press Refresh.",
+    server_not_connected: "Google Sheets isn't connected to your Claude account. Add it in claude.ai Settings → Connectors, then press Refresh.",
+    server_not_found: "Your Google Sheets connection no longer exists. Add it again in claude.ai Settings → Connectors, then press Refresh.",
+    selection_required: "You have more than one Google Sheets connection. Choose one when Claude asks, then press Refresh.",
+    not_in_manifest: "Google Sheets access is turned off for this app. Allow it in the app's permissions, then reload the page.",
+    blocked_by_policy: "Your organization's policy blocks this app from reading Google Sheets.",
+    approval_required: "Your organization requires approval for each Google Sheets call, which this app can't request.",
+    server_unavailable: "Google Sheets didn't respond. Press Refresh in a minute.",
+    rate_limited: "Too many requests to Google Sheets. Wait a minute, then press Refresh.",
+    not_granted: "Live sheet access isn't available in this view. Open the app on claude.ai.",
+    capability_disabled: "Live sheet access isn't available in this view. Open the app on claude.ai.",
+    capability_removed: "Live sheet access isn't available in this view. Open the app on claude.ai.",
+    consent_required: "This app needs your OK to read Google Sheets. Press Refresh and allow it.",
+  };
+  const RETRACT = new Set(["needs_reauth", "server_not_connected", "server_not_found", "blocked_by_policy", "approval_required", "not_in_manifest", "selection_required", "consent_required"]);
+  const errText = (e) => e.code === "tool_error"
+    ? "Google Sheets reported an error: " + (e.message || "unknown") + ". Check that your account can still open the ZnA Job Log sheet."
+    : ERROR_COPY[e.code] || "Couldn't reach Google Sheets (" + (e.code || "unknown error") + "). Press Refresh to try again.";
+
+  function onData(key, result) {
+    const p = result && result.payload;
+    const values = p && Array.isArray(p.values) ? p.values : (p && typeof p === "object" ? [] : null);
+    if (values === null) { S.err[key] = { code: "upstream_error", message: "Unexpected response" }; }
+    else { S.raw[key] = values; S.err[key] = null; S.stamp[key] = (result.cache && result.cache.storedAt) || Date.now(); }
+    recompute(); render();
+  }
+  function onError(key, e) {
+    const err = e && typeof e === "object" ? e : { code: "upstream_error", message: String(e) };
+    S.err[key] = err;
+    if (RETRACT.has(err.code)) S.raw[key] = null;
+    recompute(); render();
+  }
+
+  async function fetchOnce(src, refresh) {
+    try {
+      const res = await S.mcp.callTool(SERVER, "get_values", { spreadsheetId: SHEET_ID, range: src.range },
+        { cache: { staleTime: 60000, refresh: !!refresh } });
+      onData(src.key, res);
+    } catch (e) {
+      if (e && e.retryable && !src._retried) {
+        src._retried = true;
+        setTimeout(() => fetchOnce(src, refresh), Math.min(e.retryAfterMs || 1500 + Math.random() * 1500, 60000));
+        return;
+      }
+      onError(src.key, e);
+    }
+  }
+
+  function watchAll() {
+    for (const src of SOURCES) {
+      src._retried = false;
+      let fellBack = false;
+      S.mcp.watchTool(SERVER, "get_values", { spreadsheetId: SHEET_ID, range: src.range }, (ev) => {
+        if (ev.type === "data") return onData(src.key, ev.result);
+        const code = ev.error && ev.error.code;
+        if (!fellBack && (code === "bad_request" || code === "capability_removed")) { fellBack = true; return fetchOnce(src); }
+        onError(src.key, ev.error);
+      }, { cache: { staleTime: 60000 }, refetchInterval: 300000 });
+    }
+  }
+
+  async function refreshAll() {
+    if (!S.mcp) return;
+    $("syncText").textContent = "Refreshing…";
+    try { await S.mcp.invalidate(SERVER, "get_values"); }
+    catch { SOURCES.forEach((s) => { s._retried = false; fetchOnce(s, true); }); }
+  }
+
+  // ---- Rendering -----------------------------------------------------------
+  function renderSync() {
+    const dot = $("syncDot"), txt = $("syncText");
+    dot.className = "dot";
+    if (S.mcp === undefined) { txt.textContent = "Connecting to Google Sheets…"; return; }
+    if (S.mcp === null) { dot.classList.add("bad"); txt.textContent = "Offline"; return; }
+    if (S.err.form) { dot.classList.add("bad"); txt.textContent = "Sheet not loaded"; return; }
+    if (!S.raw.form) { txt.textContent = "Loading your job log…"; return; }
+    dot.classList.add("ok");
+    const t = new Date(Math.max(S.stamp.form, S.stamp.app));
+    txt.textContent = "Synced " + t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }
+
+  function renderBanners() {
+    const out = [];
+    if (S.mcp === null) {
+      out.push('<div class="banner info">This app reads your ZnA Job Log sheet through your Google Sheets connection. Open it on claude.ai while signed in to load your jobs.</div>');
+    } else if (S.err.form && S.err.app && S.err.form.code === S.err.app.code) {
+      out.push('<div class="banner err">' + esc(errText(S.err.form)) + "</div>");
+    } else {
+      if (S.err.form) out.push('<div class="banner err"><b>Form responses:</b> ' + esc(errText(S.err.form)) + "</div>");
+      if (S.err.app) out.push('<div class="banner err"><b>App Log tab:</b> ' + esc(errText(S.err.app)) + " Jobs from the Google Form still show.</div>");
+    }
+    $("banners").innerHTML = out.join("");
+    $("banners").hidden = !out.length;
+  }
+
+  const ready = () => S.raw.form !== null;
+  function loadingBlock(what) {
+    if (S.mcp === null) return '<div class="empty"><h2>Your job log appears here</h2><p>Open this app on claude.ai to load ' + what + " from Google Sheets.</p></div>";
+    if (S.err.form) return '<div class="empty"><h2>No jobs loaded</h2><p>Fix the connection issue above, then press Refresh.</p></div>';
+    return '<div class="card" aria-busy="true"><p class="sub" style="margin:0 0 12px">Loading ' + what + " from ZnA Job Log…</p>" +
+      '<div style="display:grid;gap:10px"><div class="skel" style="width:70%"></div><div class="skel" style="width:90%"></div><div class="skel" style="width:55%"></div></div></div>';
+  }
+
+  function statusPill(c) {
+    const m = { over: ["over", "Overdue"], due: ["due", "Due now"], ok: ["ok", "On track"], one: ["one", "One-time"] }[c.status];
+    return '<span class="pill ' + m[0] + '">' + m[1] + "</span>";
+  }
+  function phoneHtml(p) {
+    if (!p) return '<span class="sub">No phone on file</span>';
+    const f = fmtPhone(p);
+    return '<span class="phone">' + f + '</span><button class="copy" type="button" data-copy="' + f + '">Copy</button>';
+  }
+
+  // Overview -----------------------------------------------------------------
+  function monthStats(k) {
+    const js = S.jobs.filter((j) => j.date && monthKey(j.date) === k);
+    const priced = js.filter((j) => j.price != null);
+    const rev = priced.reduce((s, j) => s + j.price, 0);
+    const timed = priced.filter((j) => j.hours);
+    const hrs = timed.reduce((s, j) => s + j.hours, 0);
+    return { jobs: js.length, rev, avg: priced.length ? rev / priced.length : null, rate: hrs ? timed.reduce((s, j) => s + j.price, 0) / hrs : null };
+  }
+  function delta(cur, prev, money) {
+    if (cur == null || prev == null || prev === 0) return "";
+    const pct = Math.round(((cur - prev) / prev) * 100);
+    const cls = pct >= 0 ? "up" : "down";
+    return '<span class="' + cls + '">' + (pct >= 0 ? "+" : "") + pct + "%</span> ";
+  }
+
+  function renderOverview() {
+    const el = $("panel-overview");
+    if (!ready()) { el.innerHTML = loadingBlock("your jobs"); return; }
+    if (!S.jobs.length) { el.innerHTML = '<div class="empty"><h2>No jobs yet</h2><p>Submit your Google Form or use Log a job to add the first one.</p></div>'; return; }
+
+    const k = monthKey(today());
+    const cur = monthStats(k), prev = monthStats(k - 1);
+    const pm = monthLabel(k - 1);
+    const allPriced = S.jobs.filter((j) => j.price != null);
+    const ytd = S.jobs.filter((j) => j.date && j.date.getFullYear() === today().getFullYear() && j.price != null).reduce((s, j) => s + j.price, 0);
+
+    const due = S.clients.filter((c) => c.status === "due" || c.status === "over").sort((a, b) => b.overdueBy - a.overdueBy).slice(0, 8);
+    const winback = S.clients.filter((c) => c.status === "one" && c.since != null && c.since >= 30 && c.since <= 180)
+      .sort((a, b) => b.spend - a.spend).slice(0, 6);
+    const top = [...S.clients].sort((a, b) => b.spend - a.spend).slice(0, 6);
+
+    const svc = new Map();
+    for (const j of S.jobs) {
+      const s = svc.get(j.service) || { n: 0, rev: 0, hrs: 0, revT: 0 };
+      s.n++; if (j.price != null) { s.rev += j.price; if (j.hours) { s.hrs += j.hours; s.revT += j.price; } }
+      svc.set(j.service, s);
+    }
+    const svcList = [...svc.entries()].sort((a, b) => b[1].rev - a[1].rev);
+    const svcMax = Math.max(...svcList.map((x) => x[1].rev), 1);
+
+    const pay = new Map();
+    for (const j of allPriced) pay.set(j.payment, (pay.get(j.payment) || 0) + j.price);
+    const payTotal = [...pay.values()].reduce((a, b) => a + b, 0) || 1;
+    const payLine = [...pay.entries()].sort((a, b) => b[1] - a[1]).map(([p, v]) => esc(p) + " " + Math.round((v / payTotal) * 100) + "%").join(" · ");
+
+    const personRow = (c, meta) => '<div class="person"><button class="name" type="button" data-client="' + c.id + '">' + esc(c.name) + "</button>" +
+      statusPill(c) + '<div class="meta">' + meta + "</div></div>";
+
+    el.innerHTML =
+      '<div style="display:grid;gap:20px">' +
+      '<div class="kpis">' +
+        kpi("Revenue · " + monthLabel(k), fmtMoney(cur.rev), delta(cur.rev, prev.rev) + "vs " + fmtMoney(prev.rev) + " in " + pm) +
+        kpi("Jobs · " + monthLabel(k), String(cur.jobs), delta(cur.jobs, prev.jobs) + "vs " + prev.jobs + " in " + pm) +
+        kpi("Average ticket", fmtMoney(cur.avg ?? null), cur.avg == null ? "No priced jobs this month" : delta(cur.avg, prev.avg) + "vs " + fmtMoney(prev.avg) + " in " + pm) +
+        kpi("Earned per hour", cur.rate == null ? "—" : fmtMoney(cur.rate, true), cur.rate == null ? "Log time spent to see this" : delta(cur.rate, prev.rate) + "vs " + fmtMoney(prev.rate, true) + " in " + pm) +
+      "</div>" +
+      '<div class="grid-2">' +
+        '<div class="card"><div class="card-head"><h2>Due for a visit</h2><span class="sub">Repeat clients past their usual gap</span></div>' +
+          (due.length ? '<div class="people">' + due.map((c) => personRow(c,
+            "<span>Last " + ago(c.last) + " · usually every " + Math.round(c.interval) + " days</span>" + phoneHtml(c.phone))).join("") + "</div>"
+            : '<p class="sub">Every repeat client is on schedule.</p>') +
+        "</div>" +
+        '<div class="card"><div class="card-head"><h2>Revenue by month</h2><span class="sub num">' + fmtMoney(ytd) + " so far in " + today().getFullYear() + "</span></div>" +
+          '<div class="chart" id="revChart"></div></div>' +
+      "</div>" +
+      '<div class="grid-2">' +
+        '<div class="card"><div class="card-head"><h2>Services</h2><span class="sub">All-time revenue · jobs · $/hr</span></div><div class="bars">' +
+          svcList.map(([name, s]) => '<div class="bar-row"><span class="label" title="' + esc(name) + '">' + esc(name) + "</span>" +
+            '<div class="bar-track"><div class="bar-fill" style="width:' + ((s.rev / svcMax) * 100).toFixed(1) + '%"></div></div>' +
+            '<span class="val">' + fmtMoney(s.rev) + " · " + s.n + " · " + (s.hrs ? fmtMoney(s.revT / s.hrs) + "/h" : "—") + "</span></div>").join("") +
+          '</div><p class="sub" style="margin:14px 0 0">Paid by: ' + payLine + "</p></div>" +
+        '<div class="card"><div class="card-head"><h2>Best clients</h2><span class="sub">Lifetime spend</span></div><div class="people">' +
+          top.map((c) => personRow(c, '<span class="num">' + fmtMoney(c.spend) + " · " + c.visits + (c.visits === 1 ? " visit" : " visits") + " · last " + ago(c.last) + "</span>")).join("") +
+        "</div>" +
+        (winback.length ? '<div class="card-head" style="margin:18px 0 12px"><h2>Win back</h2><span class="sub">One visit, 1–6 months ago</span></div><div class="people">' +
+          winback.map((c) => personRow(c, "<span>" + esc(c.vehicles[0] || "Vehicle not logged") + " · " + ago(c.last) + "</span>" + phoneHtml(c.phone))).join("") + "</div>" : "") +
+        "</div>" +
+      "</div></div>";
+    drawRevenueChart();
+  }
+  function kpi(label, value, d) {
+    return '<div class="kpi"><span class="eyebrow">' + esc(label) + '</span><span class="v">' + value + '</span><span class="d">' + d + "</span></div>";
+  }
+
+  function drawRevenueChart() {
+    const box = $("revChart");
+    if (!box) return;
+    const dated = S.jobs.filter((j) => j.date);
+    if (!dated.length) { box.innerHTML = '<p class="sub">No dated jobs yet.</p>'; return; }
+    const end = monthKey(today());
+    const firstK = Math.min(...dated.map((j) => monthKey(j.date)));
+    const start = Math.max(firstK, end - 11);
+    const months = [];
+    for (let k = start; k <= end; k++) {
+      const js = dated.filter((j) => monthKey(j.date) === k);
+      months.push({ k, rev: js.reduce((s, j) => s + (j.price || 0), 0), n: js.length });
+    }
+    const W = Math.max(280, box.clientWidth || 480), H = 220, L = 44, R = 8, T = 12, B = 26;
+    const maxV = Math.max(...months.map((m) => m.rev), 1);
+    const steps = [50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000];
+    const step = steps.find((s) => maxV / s <= 4) || 50000;
+    const top = Math.ceil(maxV / step) * step;
+    const y = (v) => T + (H - T - B) * (1 - v / top);
+    const slot = (W - L - R) / months.length;
+    const bw = Math.max(4, Math.min(36, slot - 6));
+    let g = "";
+    for (let v = 0; v <= top; v += step) {
+      g += '<line class="grid" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '"/>' +
+        '<text x="' + (L - 6) + '" y="' + (y(v) + 4) + '" text-anchor="end">' + (v >= 1000 ? "$" + v / 1000 + "k" : "$" + v) + "</text>";
+    }
+    const every = months.length > 8 && W < 480 ? 2 : 1;
+    months.forEach((m, i) => {
+      const cx = L + slot * i + slot / 2, x = cx - bw / 2, y0 = y(0), y1 = y(m.rev), h = y0 - y1, r = Math.min(4, h, bw / 2);
+      if (h > 0.5) {
+        g += '<path class="b' + (m.k === end ? "" : " dim") + '" d="M' + x + "," + y0 + "V" + (y1 + r) + "Q" + x + "," + y1 + " " + (x + r) + "," + y1 +
+          "H" + (x + bw - r) + "Q" + (x + bw) + "," + y1 + " " + (x + bw) + "," + (y1 + r) + "V" + y0 + 'Z"/>';
+      }
+      if ((months.length - 1 - i) % every === 0) g += '<text x="' + cx + '" y="' + (H - 8) + '" text-anchor="middle">' + monthLabel(m.k) + "</text>";
+      g += '<rect class="hit" data-i="' + i + '" x="' + (L + slot * i) + '" y="' + T + '" width="' + slot + '" height="' + (H - T - B) + '"/>';
+    });
+    box.innerHTML = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Revenue by month">' + g + '</svg><div class="tip" hidden></div>';
+    const tip = box.querySelector(".tip");
+    box.querySelectorAll(".hit").forEach((r) => {
+      const show = () => {
+        const m = months[+r.dataset.i];
+        const cx = L + slot * +r.dataset.i + slot / 2;
+        const scale = box.clientWidth / W;
+        tip.innerHTML = "<b>" + monthLabel(m.k, true) + "</b><br>" + fmtMoney(m.rev) + " · " + m.n + (m.n === 1 ? " job" : " jobs");
+        tip.style.left = cx * scale + "px";
+        tip.style.top = Math.max(y(m.rev) * scale - 6, 40) + "px";
+        tip.hidden = false;
+      };
+      r.addEventListener("mouseenter", show);
+      r.addEventListener("click", show);
+      r.addEventListener("mouseleave", () => { tip.hidden = true; });
+    });
+  }
+
+  // Clients --------------------------------------------------------------------
+  function renderClients() {
+    const el = $("clientList");
+    if (!ready()) { el.innerHTML = loadingBlock("your clients"); return; }
+    const q = $("clientSearch").value.trim().toLowerCase();
+    const qd = q.replace(/\D/g, "");
+    let list = S.clients.filter((c) => {
+      if (S.clientFilter === "due" && !(c.status === "due" || c.status === "over")) return false;
+      if (S.clientFilter === "repeat" && c.visits < 2) return false;
+      if (S.clientFilter === "one" && c.visits !== 1) return false;
+      if (!q) return true;
+      return c.aliases.some((a) => a.toLowerCase().includes(q)) || c.vehicles.some((v) => v.toLowerCase().includes(q)) ||
+        (qd.length >= 3 && c.phone && c.phone.includes(qd));
+    });
+    const sort = $("clientSort").value;
+    const cmp = {
+      last: (a, b) => (b.last || 0) - (a.last || 0),
+      spend: (a, b) => b.spend - a.spend,
+      visits: (a, b) => b.visits - a.visits || b.spend - a.spend,
+      due: (a, b) => b.overdueBy - a.overdueBy,
+      name: (a, b) => a.name.localeCompare(b.name),
+    }[sort];
+    list.sort(cmp);
+    if (!list.length) { el.innerHTML = '<p class="sub">No clients match.</p>'; return; }
+    el.innerHTML = '<p class="summary-line">' + list.length + (list.length === 1 ? " client" : " clients") + " · " + fmtMoney(list.reduce((s, c) => s + c.spend, 0)) + " lifetime</p>" +
+      '<div class="table-wrap"><table><thead><tr><th>Client</th><th>Status</th><th class="r">Visits</th><th class="r">Spend</th><th>Last visit</th><th class="hide-sm">Phone</th></tr></thead><tbody>' +
+      list.map((c) => '<tr class="click" data-client="' + c.id + '" tabindex="0"><td><b>' + esc(c.name) + '</b><div class="second">' + esc(c.vehicles.slice(0, 2).join(", ") || "—") + "</div></td>" +
+        "<td>" + statusPill(c) + '</td><td class="r">' + c.visits + '</td><td class="r">' + fmtMoney(c.spend) + "</td><td>" + fmtDate(c.last) +
+        '<div class="second">' + ago(c.last) + '</div></td><td class="hide-sm phone">' + (c.phone ? fmtPhone(c.phone) : "—") + "</td></tr>").join("") +
+      "</tbody></table></div>";
+  }
+
+  function openClient(id) {
+    const c = S.byId.get(id);
+    if (!c) return;
+    S.openClient = id;
+    const avg = c.jobs.filter((j) => j.price != null);
+    $("overlay").innerHTML = '<div class="sheet-backdrop" data-close></div><aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">' +
+      '<div style="display:flex;justify-content:space-between;gap:12px;align-items:start"><div><span class="eyebrow">Client</span><h2 id="sheetTitle">' + esc(c.name) + "</h2>" +
+      (c.aliases.length > 1 ? '<p class="sub" style="margin:2px 0 0">Also logged as ' + esc(c.aliases.filter((a) => a !== c.name).join(", ")) + "</p>" : "") +
+      '</div><button class="btn small" type="button" data-close id="sheetClose">Close</button></div>' +
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' + statusPill(c) + phoneHtml(c.phone) + "</div>" +
+      '<div class="stats">' +
+        stat("Lifetime", fmtMoney(c.spend)) + stat("Visits", String(c.visits)) +
+        stat("Avg ticket", avg.length ? fmtMoney(c.spend / avg.length) : "—") +
+        stat("First visit", fmtDate(c.first)) + stat("Last visit", fmtDate(c.last)) +
+        stat("Usual gap", c.interval != null ? Math.round(c.interval) + " days" : "—") +
+      "</div>" +
+      (c.vehicles.length ? '<div><span class="eyebrow">Vehicles</span><div class="vehicles" style="margin-top:6px">' + c.vehicles.map((v) => "<span>" + esc(v) + "</span>").join("") + "</div></div>" : "") +
+      '<div><button class="btn primary" type="button" id="logForClient">Log a job for ' + esc(c.name) + "</button></div>" +
+      '<div><span class="eyebrow">Job history</span><div class="table-wrap" style="margin-top:6px"><table><thead><tr><th>Date</th><th>Service</th><th class="r">Price</th><th class="r">Hours</th></tr></thead><tbody>' +
+      c.jobs.map((j) => "<tr><td>" + fmtDate(j.date) + "</td><td>" + esc(j.service) + '<div class="second">' + esc([j.vehicle, j.payment !== "—" ? j.payment : "", j.notes].filter(Boolean).join(" · ")) + "</div></td>" +
+        '<td class="r">' + (j.price != null ? fmtMoney(j.price) : esc(j.priceRaw || "—")) + '</td><td class="r">' + (j.hours ?? "—") + "</td></tr>").join("") +
+      "</tbody></table></div></div></aside>";
+    $("sheetClose").focus();
+    $("logForClient").onclick = () => { closeClient(); prefillLog(c); setTab("log"); };
+  }
+  const stat = (l, v) => '<div class="stat"><span class="eyebrow">' + l + '</span><div class="v">' + v + "</div></div>";
+  function closeClient() { S.openClient = null; $("overlay").innerHTML = ""; }
+
+  // Jobs -------------------------------------------------------------------------
+  function renderJobs() {
+    const el = $("jobList");
+    if (!ready()) { el.innerHTML = loadingBlock("your jobs"); return; }
+    const svcSel = $("jobService"), monSel = $("jobMonth");
+    const svcs = [...new Set(S.jobs.map((j) => j.service))].sort();
+    const mons = [...new Set(S.jobs.filter((j) => j.date).map((j) => monthKey(j.date)))].sort((a, b) => b - a);
+    syncOptions(svcSel, "All services", svcs.map((s) => [s, s]));
+    syncOptions(monSel, "All months", mons.map((k) => [String(k), monthLabel(k, true)]));
+
+    const q = $("jobSearch").value.trim().toLowerCase();
+    const list = S.jobs.filter((j) => (!svcSel.value || j.service === svcSel.value) &&
+      (!monSel.value || (j.date && monthKey(j.date) === +monSel.value)) &&
+      (!q || [j.client, j.vehicle, j.notes, j.service, j.payment].some((x) => x.toLowerCase().includes(q))));
+    const priced = list.filter((j) => j.price != null);
+    const rev = priced.reduce((s, j) => s + j.price, 0);
+    const timed = priced.filter((j) => j.hours);
+    const hrs = timed.reduce((s, j) => s + j.hours, 0);
+    if (!list.length) { el.innerHTML = '<p class="sub">No jobs match.</p>'; return; }
+    el.innerHTML = '<p class="summary-line">' + list.length + (list.length === 1 ? " job" : " jobs") + " · " + fmtMoney(rev) + " · " +
+      (hrs ? fmtMoney(timed.reduce((s, j) => s + j.price, 0) / hrs, true) + " per hour over " + Math.round(hrs * 10) / 10 + " h" : "no hours logged") + "</p>" +
+      '<div class="table-wrap"><table><thead><tr><th>Date</th><th>Client</th><th>Service</th><th class="r">Price</th><th class="hide-sm">Paid</th><th class="r">Hours</th><th class="r">$/hr</th></tr></thead><tbody>' +
+      list.map((j) => {
+        const c = S.jobClient.get(j.id);
+        return '<tr class="click" data-client="' + (c ? c.id : "") + '" tabindex="0"><td class="num">' + fmtDate(j.date) + "</td>" +
+          "<td><b>" + esc(j.client) + "</b>" + (j.source === "app" ? ' <span class="tag">App</span>' : "") + '<div class="second">' + esc(j.vehicle || "—") + "</div></td>" +
+          "<td>" + esc(j.service) + (j.notes ? '<div class="second">' + esc(j.notes) + "</div>" : "") + "</td>" +
+          '<td class="r">' + (j.price != null ? fmtMoney(j.price) : '<span class="sub">' + esc(j.priceRaw || "—") + "</span>") + '</td><td class="hide-sm">' + esc(j.payment) + "</td>" +
+          '<td class="r">' + (j.hours ?? "—") + '</td><td class="r">' + (j.rate != null ? fmtMoney(j.rate, true) : "—") + "</td></tr>";
+      }).join("") + "</tbody></table></div>";
+  }
+  function syncOptions(sel, allLabel, pairs) {
+    const want = [["", allLabel], ...pairs].map((p) => p.join("\u0000")).join("\u0001");
+    if (sel.dataset.sig === want) return;
+    const v = sel.value;
+    sel.innerHTML = [["", allLabel], ...pairs].map(([val, lab]) => '<option value="' + esc(val) + '">' + esc(lab) + "</option>").join("");
+    sel.dataset.sig = want;
+    if ([...sel.options].some((o) => o.value === v)) sel.value = v;
+  }
+
+  // Log a job ------------------------------------------------------------------------
+  function renderLogForm() {
+    $("clientNames").innerHTML = S.clients.map((c) => '<option value="' + esc(c.name) + '"></option>').join("");
+    const services = [...new Set([...DEFAULT_SERVICES, ...S.jobs.map((j) => j.service).filter((s) => s !== "Unspecified")])];
+    const sel = $("f-service");
+    const cur = sel.value;
+    const sig = services.join("|");
+    if (sel.dataset.sig !== sig) {
+      sel.innerHTML = services.map((s) => "<option>" + esc(s) + "</option>").join("") + '<option value="__other">Other…</option>';
+      sel.dataset.sig = sig;
+      sel.value = cur && [...sel.options].some((o) => o.value === cur) ? cur : "Basic Package";
+    }
+    const canWrite = !!S.mcp;
+    $("f-submit").disabled = !canWrite || $("f-submit").dataset.busy === "1";
+    if (!canWrite && S.mcp === null) setMsg("Open this app on claude.ai to save jobs to your sheet.", "bad");
+  }
+  function findClientByName(name) {
+    const n = name.trim().toLowerCase();
+    return n ? S.clients.find((c) => c.aliases.some((a) => a.toLowerCase() === n)) : null;
+  }
+  function onClientInput() {
+    const c = findClientByName($("f-client").value);
+    $("vehicleNames").innerHTML = c ? c.vehicles.map((v) => '<option value="' + esc(v) + '"></option>').join("") : "";
+    if (c) {
+      if (!$("f-phone").value && c.phone) $("f-phone").value = fmtPhone(c.phone);
+      if (!$("f-vehicle").value && c.vehicles.length === 1) $("f-vehicle").value = c.vehicles[0];
+      $("f-client-hint").textContent = "Returning client · " + c.visits + (c.visits === 1 ? " visit" : " visits") + ", last " + ago(c.last) + ".";
+    } else {
+      $("f-client-hint").textContent = $("f-client").value.trim() ? "New client." : "Pick an existing client to fill in their phone.";
+    }
+  }
+  function prefillLog(c) {
+    const f = $("logForm");
+    f.reset();
+    $("f-date").value = isoDate(today());
+    $("f-client").value = c.name;
+    if (c.phone) $("f-phone").value = fmtPhone(c.phone);
+    const lastJob = c.jobs[0];
+    if (lastJob) {
+      if (c.vehicles.length) $("f-vehicle").value = lastJob.vehicle || c.vehicles[0];
+      const sel = $("f-service");
+      if ([...sel.options].some((o) => o.value === lastJob.service)) sel.value = lastJob.service;
+      if (lastJob.payment && [...$("f-payment").options].some((o) => o.value === lastJob.payment)) $("f-payment").value = lastJob.payment;
+    }
+    onClientInput(); updateCalc(); onServiceChange(); setMsg("");
+  }
+  const isoDate = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  function updateCalc() {
+    const p = parseFloat($("f-price").value), h = parseFloat($("f-hours").value);
+    $("f-calc").textContent = p > 0 && h > 0 ? "≈ " + fmtMoney(p / h, true) + " per hour" : "";
+  }
+  function onServiceChange() { $("f-service-other-wrap").hidden = $("f-service").value !== "__other"; }
+  function setMsg(t, cls) { const m = $("f-msg"); m.textContent = t; m.className = "msg" + (cls ? " " + cls : ""); }
+  // Keep typed text from being read as a formula by Google Sheets.
+  const safeCell = (s) => clean(s).replace(/^[=+\-@]+/, "");
+
+  async function submitLog(ev) {
+    ev.preventDefault();
+    if (!S.mcp) return;
+    const client = safeCell($("f-client").value);
+    const dateVal = $("f-date").value;
+    let service = $("f-service").value === "__other" ? safeCell($("f-service-other").value) : $("f-service").value;
+    if (!client || !dateVal) { setMsg("Add the client and the date of service.", "bad"); return; }
+    if (!service) { setMsg("Name the service.", "bad"); return; }
+    const [y, m, d] = dateVal.split("-").map(Number);
+    const price = parseFloat($("f-price").value);
+    const hours = parseFloat($("f-hours").value);
+    const phone = parsePhone($("f-phone").value);
+    const now = new Date();
+    const stamp = (now.getMonth() + 1) + "/" + now.getDate() + "/" + now.getFullYear() + " " + now.getHours() + ":" +
+      String(now.getMinutes()).padStart(2, "0") + ":" + String(now.getSeconds()).padStart(2, "0");
+    const row = [
+      stamp, client, m + "/" + d + "/" + y, safeCell($("f-vehicle").value), service,
+      isNaN(price) ? "" : "$" + (Math.round(price * 100) / 100), $("f-payment").value,
+      phone ? fmtPhone(phone) : safeCell($("f-phone").value),
+      isNaN(hours) ? "" : hours,
+      !isNaN(price) && hours > 0 ? "$" + (price / hours).toFixed(2) : "",
+      safeCell($("f-notes").value),
+    ];
+    const btn = $("f-submit");
+    btn.disabled = true; btn.dataset.busy = "1"; btn.textContent = "Saving…";
+    setMsg("");
+    try {
+      await S.mcp.callTool(SERVER, "append_values", { spreadsheetId: SHEET_ID, range: APPEND_RANGE, values: [row] }, { cache: false });
+      $("logForm").reset();
+      $("f-date").value = isoDate(today());
+      onClientInput(); updateCalc(); onServiceChange();
+      setMsg("Saved " + client + " · " + service + " to the App Log tab.", "ok");
+      toast("Job added to your sheet");
+      try { await S.mcp.invalidate(SERVER, "get_values"); } catch { fetchOnce(SOURCES[1], true); }
+    } catch (e) {
+      const code = e && e.code;
+      if (code === "server_unavailable" || code === "upstream_error" || code === "cancelled" || !code) {
+        setMsg("Google Sheets didn't confirm the save. Press Refresh and check the Jobs tab before adding it again, so it isn't logged twice.", "bad");
+      } else if (code === "tool_error") {
+        setMsg("Google Sheets refused the row: " + (e.message || "unknown error") + ". Check that the App Log tab still exists and you can edit the sheet.", "bad");
+      } else {
+        setMsg(errText(e), "bad");
+      }
+    } finally {
+      btn.dataset.busy = ""; btn.textContent = "Add to sheet"; btn.disabled = !S.mcp;
+    }
+  }
+
+  // Ask Claude ------------------------------------------------------------------------
+  function dataForClaude() {
+    const lines = ["date,client,vehicle,service,price,payment,hours,notes"];
+    for (const j of [...S.jobs].reverse()) {
+      const q = (s) => '"' + String(s ?? "").replace(/"/g, "'") + '"';
+      lines.push([j.date ? isoDate(j.date) : "", q(j.client), q(j.vehicle), q(j.service), j.price ?? q(j.priceRaw), q(j.payment), j.hours ?? "", q(j.notes)].join(","));
+    }
+    const cl = ["client,visits,lifetime_spend,last_visit,days_since,usual_gap_days,status,has_phone"];
+    for (const c of S.clients) cl.push(['"' + c.name.replace(/"/g, "'") + '"', c.visits, c.spend, c.last ? isoDate(c.last) : "", c.since ?? "", c.interval != null ? Math.round(c.interval) : "", c.status, c.phone ? "yes" : "no"].join(","));
+    return "JOBS (one row per detailing job)\n" + lines.join("\n") + "\n\nCLIENTS (jobs grouped by name/phone; status: over=overdue, due=due now, ok=on track, one=one-time)\n" + cl.join("\n");
+  }
+  function renderChat() {
+    $("chat").innerHTML = S.chat.map((t) => '<div class="bubble ' + (t.role === "user" ? "me" : "bot") + '">' + esc(t.content) + "</div>").join("");
+  }
+  async function ask(text) {
+    const q = clean(text);
+    if (!q) return;
+    $("askMsg").textContent = "";
+    if (!ready() || !S.jobs.length) { $("askMsg").textContent = "Your job log hasn't loaded yet."; return; }
+    const sample = S.sample;
+    if (!sample) { $("askMsg").textContent = "Asking Claude isn't available in this view."; return; }
+    S.chat.push({ role: "user", content: q });
+    S.chat.push({ role: "assistant", content: "Thinking…", pending: true });
+    renderChat();
+    $("askInput").value = "";
+    const rules = "You are the assistant inside ZnA Job Log, a CRM for a mobile auto detailing business. Today is " + isoDate(today()) +
+      ". Answer using only the data below. Be concise and practical: short paragraphs or short bullet lists, plain text (no markdown tables). " +
+      "Use dollar amounts and dates from the data. If you draft messages to clients, keep them friendly, short, and ready to text.\n\n" + dataForClaude();
+    const turns = [{ role: "user", content: rules }];
+    for (const t of S.chat.slice(0, -1).slice(-10)) turns.push({ role: t.role, content: t.content });
+    const bubble = S.chat[S.chat.length - 1];
+    const ctl = new AbortController();
+    S.askCtl = ctl;
+    $("askBtn").disabled = true; $("stopBtn").hidden = false;
+    try {
+      const res = await sample(turns, { cache: false, signal: ctl.signal, onText: ({ text }) => { bubble.content = text; renderChat(); } });
+      bubble.content = res.text + (res.truncated ? "\n\n(Answer cut short. Ask a narrower question.)" : "");
+    } catch (e) {
+      const code = e && e.code;
+      bubble.content = (e && e.text) || "";
+      if (code === "not_granted" || code === "sampling_disabled" || code === "not_declared" || code === "capability_disabled" || code === "capability_removed") {
+        $("askMsg").textContent = "Asking Claude isn't allowed for this app in your account.";
+        S.sample = null;
+      } else if (code === "rate_limited") $("askMsg").textContent = "You've hit a usage limit. Try again later.";
+      else if (code === "session_expired") $("askMsg").textContent = "Sign in to claude.ai again, then ask.";
+      else if (code === "refused") { bubble.content = ""; $("askMsg").textContent = "Claude declined that question. Try rephrasing it."; }
+      else if (code === "prompt_too_large") $("askMsg").textContent = "Your job log is too large to send in one question.";
+      else if (code !== "cancelled") $("askMsg").textContent = "The answer was interrupted. Ask again.";
+      if (!bubble.content) S.chat.pop();
+    } finally {
+      bubble.pending = false;
+      $("askBtn").disabled = false; $("stopBtn").hidden = true;
+      renderChat();
+    }
+  }
+
+  // ---- Shell ----------------------------------------------------------------------------
+  function setTab(t) {
+    S.tab = t;
+    document.querySelectorAll("nav.tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === t)));
+    document.querySelectorAll("[data-panel]").forEach((p) => { p.hidden = p.dataset.panel !== t; });
+    try { localStorage.setItem("zna-tab", t); } catch {}
+    render();
+  }
+  function render() {
+    renderSync(); renderBanners();
+    if (S.tab === "overview") renderOverview();
+    if (S.tab === "clients") renderClients();
+    if (S.tab === "jobs") renderJobs();
+    if (S.tab === "log") renderLogForm();
+    if (S.openClient && !S.byId.has(S.openClient)) closeClient();
+  }
+  let toastTimer;
+  function toast(t) { const el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 2600); }
+
+  document.querySelectorAll("nav.tabs button").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
+  $("refreshBtn").addEventListener("click", refreshAll);
+  $("clientSearch").addEventListener("input", renderClients);
+  $("clientSort").addEventListener("change", renderClients);
+  $("clientFilter").addEventListener("click", (e) => {
+    const b = e.target.closest(".chip"); if (!b) return;
+    S.clientFilter = b.dataset.f;
+    $("clientFilter").querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-pressed", String(c === b)));
+    renderClients();
+  });
+  $("jobSearch").addEventListener("input", renderJobs);
+  $("jobService").addEventListener("change", renderJobs);
+  $("jobMonth").addEventListener("change", renderJobs);
+  $("f-client").addEventListener("input", onClientInput);
+  $("f-price").addEventListener("input", updateCalc);
+  $("f-hours").addEventListener("input", updateCalc);
+  $("f-service").addEventListener("change", onServiceChange);
+  $("logForm").addEventListener("submit", submitLog);
+  $("askBtn").addEventListener("click", () => ask($("askInput").value));
+  $("stopBtn").addEventListener("click", () => S.askCtl && S.askCtl.abort());
+  $("askInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask($("askInput").value); } });
+  $("askSuggest").addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (b) ask(b.textContent); });
+
+  document.addEventListener("click", (e) => {
+    const cp = e.target.closest("[data-copy]");
+    if (cp) {
+      e.stopPropagation();
+      const text = cp.dataset.copy;
+      const fallback = () => { const ph = cp.previousElementSibling; if (ph) { const r = document.createRange(); r.selectNodeContents(ph); const s = getSelection(); s.removeAllRanges(); s.addRange(r); } toast("Selected. Press Ctrl+C or ⌘C to copy."); };
+      try { navigator.clipboard.writeText(text).then(() => toast("Copied " + text), fallback); } catch { fallback(); }
+      return;
+    }
+    if (e.target.closest("[data-close]")) { closeClient(); return; }
+    const cl = e.target.closest("[data-client]");
+    if (cl && cl.dataset.client) openClient(cl.dataset.client);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && S.openClient) closeClient();
+    if (e.key === "Enter" && e.target.matches && e.target.matches("tr[data-client]")) openClient(e.target.dataset.client);
+  });
+  let resizeTimer;
+  window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (S.tab === "overview" && ready()) drawRevenueChart(); }, 150); });
+
+  $("f-date").value = isoDate(today());
+  try { const t = localStorage.getItem("zna-tab"); if (t && t !== "overview" && document.querySelector('[data-panel="' + t + '"]')) setTab(t); else render(); } catch { render(); }
+
+  // ---- Boot --------------------------------------------------------------------------
+  const use = window.claude && typeof window.claude.use === "function" ? window.claude.use.bind(window.claude) : null;
+  if (!use) { S.mcp = null; S.sample = null; render(); }
+  else {
+    use("mcp").then((mcp) => { S.mcp = mcp || null; render(); if (mcp) watchAll(); }).catch(() => { S.mcp = null; render(); });
+    use("sample").then((s) => { S.sample = s || null; }).catch(() => { S.sample = null; });
+  }
+})();
+</script>
