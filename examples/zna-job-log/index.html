@@ -174,6 +174,9 @@ form.log { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100
 .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
 .stat .v { font-family: var(--font-display); font-stretch: 110%; font-weight: 700; font-size: 18px; font-variant-numeric: tabular-nums; }
+.merge-row { display: flex; gap: 8px; margin-top: 6px; }
+.merge-row input { flex: 1; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; }
+.merges { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 4px; font-size: 13px; color: var(--ink-2); }
 .vehicles { display: flex; gap: 6px; flex-wrap: wrap; }
 .vehicles span { background: var(--sunken); border-radius: 6px; padding: 2px 8px; font-size: 13px; }
 
@@ -362,7 +365,7 @@ form.log { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100
 
   // ---- State ---------------------------------------------------------------
   const S = {
-    mcp: undefined, sample: undefined,
+    mcp: undefined, sample: undefined, db: undefined, merges: [],
     raw: { form: null, app: null }, err: { form: null, app: null }, stamp: { form: 0, app: 0 },
     jobs: [], clients: [], byId: new Map(),
     tab: "overview", clientFilter: "all", openClient: null,
@@ -414,6 +417,7 @@ form.log { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100
     return d.length >= 10 ? d.slice(-10) : null;
   }
   const clean = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
+  const normName = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
 
   function colIndex(header, tests, fallback) {
     const h = header.map((x) => clean(x).toLowerCase());
@@ -458,20 +462,20 @@ form.log { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100
     return out;
   }
 
-  // Group jobs into clients: same normalized name, or same phone number, is the same client.
+  // Group jobs into clients: same normalized name, same phone number, or a saved merge is the same client.
   function buildClients(jobs) {
     const parent = new Map();
     const find = (k) => { while (parent.get(k) !== k) { parent.set(k, parent.get(parent.get(k))); k = parent.get(k); } return k; };
     const add = (k) => { if (!parent.has(k)) parent.set(k, k); };
     const union = (a, b) => { add(a); add(b); const ra = find(a), rb = find(b); if (ra !== rb) parent.set(rb, ra); };
-    const nameKey = (j) => "n:" + j.client.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+    const nameKey = (j) => "n:" + normName(j.client);
     for (const j of jobs) { add(nameKey(j)); if (j.phone) union(nameKey(j), "p:" + j.phone); }
+    for (const m of S.merges) union("n:" + m.a, "n:" + m.b);
     const groups = new Map();
     for (const j of jobs) { const r = find(nameKey(j)); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(j); }
 
     const t0 = today();
     const clients = [];
-    let n = 0;
     for (const list of groups.values()) {
       list.sort((a, b) => (b.date || 0) - (a.date || 0));
       const counts = new Map();
@@ -491,8 +495,9 @@ form.log { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100
       const vehicles = [];
       const seenV = new Set();
       for (const j of list) { const k = j.vehicle.toLowerCase(); if (j.vehicle && !seenV.has(k)) { seenV.add(k); vehicles.push(j.vehicle); } }
+      const keys = [...new Set(list.map((j) => normName(j.client)))].sort();
       clients.push({
-        id: "c" + (n++), name, aliases: [...counts.keys()],
+        id: "c-" + keys[0].replace(/[^a-z0-9]+/g, "-"), keys, name, aliases: [...counts.keys()],
         phone: (list.find((j) => j.phone) || {}).phone || null,
         jobs: list, visits: list.length, spend: list.reduce((s, j) => s + (j.price || 0), 0),
         first, last, interval, since, status, vehicles,
@@ -798,10 +803,53 @@ form.log { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100
       "</tbody></table></div>";
   }
 
-  function openClient(id) {
+  const mergesOf = (c) => S.merges.filter((m) => c.keys.includes(m.a) || c.keys.includes(m.b));
+  const sigOf = (c) => [c.id, c.visits, c.spend, mergesOf(c).length, S.db ? 1 : 0].join(":");
+  function mergeBlock(c) {
+    if (!S.db) return "";
+    const links = mergesOf(c);
+    return '<div><span class="eyebrow">Same person as another client?</span>' +
+      '<div class="merge-row"><input id="mergeInput" list="mergeNames" placeholder="Pick a client name" aria-label="Client to merge with">' +
+      '<datalist id="mergeNames">' + S.clients.filter((x) => x.id !== c.id).map((x) => '<option value="' + esc(x.name) + '"></option>').join("") + "</datalist>" +
+      '<button class="btn" type="button" id="mergeBtn">Merge</button></div>' +
+      '<p class="sub" id="mergeMsg" style="margin:6px 0 0">Combines their visits, spend and history into one client. Your sheet isn\'t changed.</p>' +
+      (links.length ? '<ul class="merges">' + links.map((m) => "<li>Merged " + esc(m.aName || m.a) + " + " + esc(m.bName || m.b) +
+        ' <button class="copy" type="button" data-unmerge="' + esc(m.id) + '">Undo</button></li>').join("") + "</ul>" : "") + "</div>";
+  }
+  const dbErrText = (e) => ({
+    invalid_argument: "You don't have permission to change merges in this app.",
+    quota_exceeded: "The app's storage is full. Undo some merges first.",
+    revoked: "Access to the app's storage was removed. Reload the page.",
+    resource_exhausted: "Too many changes at once. Wait a moment and try again.",
+  }[e && e.code] || "Couldn't save the change. Try again.");
+  async function doMerge(c) {
+    const msg = $("mergeMsg");
+    const t = findClientByName($("mergeInput").value);
+    if (!t) { msg.textContent = "Pick a name from the list."; return; }
+    if (t.id === c.id) { msg.textContent = "That's already this client."; return; }
+    const [a, b] = [c.keys[0], t.keys[0]].sort();
+    const names = a === c.keys[0] ? [c.name, t.name] : [t.name, c.name];
+    $("mergeBtn").disabled = true;
+    msg.textContent = "Merging…";
+    try {
+      await S.db.collection("merges").doc((a + "~" + b).replace(/ /g, "-")).set({ a, b, aName: names[0], bName: names[1], at: new Date().toISOString() });
+      toast("Merged " + t.name + " with " + c.name);
+    } catch (e) {
+      msg.textContent = dbErrText(e);
+      $("mergeBtn").disabled = false;
+    }
+  }
+  async function undoMerge(id) {
+    try { await S.db.collection("merges").doc(id).delete(); toast("Merge undone"); }
+    catch (e) { toast(dbErrText(e)); }
+  }
+
+  function openClient(id, quiet) {
     const c = S.byId.get(id);
     if (!c) return;
     S.openClient = id;
+    S.openKey = c.keys[0];
+    S.openSig = sigOf(c);
     const avg = c.jobs.filter((j) => j.price != null);
     $("overlay").innerHTML = '<div class="sheet-backdrop" data-close></div><aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">' +
       '<div style="display:flex;justify-content:space-between;gap:12px;align-items:start"><div><span class="eyebrow">Client</span><h2 id="sheetTitle">' + esc(c.name) + "</h2>" +
@@ -816,12 +864,14 @@ form.log { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100
       "</div>" +
       (c.vehicles.length ? '<div><span class="eyebrow">Vehicles</span><div class="vehicles" style="margin-top:6px">' + c.vehicles.map((v) => "<span>" + esc(v) + "</span>").join("") + "</div></div>" : "") +
       '<div><button class="btn primary" type="button" id="logForClient">Log a job for ' + esc(c.name) + "</button></div>" +
+      mergeBlock(c) +
       '<div><span class="eyebrow">Job history</span><div class="table-wrap" style="margin-top:6px"><table><thead><tr><th>Date</th><th>Service</th><th class="r">Price</th><th class="r">Hours</th></tr></thead><tbody>' +
       c.jobs.map((j) => "<tr><td>" + fmtDate(j.date) + "</td><td>" + esc(j.service) + '<div class="second">' + esc([j.vehicle, j.payment !== "—" ? j.payment : "", j.notes].filter(Boolean).join(" · ")) + "</div></td>" +
         '<td class="r">' + (j.price != null ? fmtMoney(j.price) : esc(j.priceRaw || "—")) + '</td><td class="r">' + (j.hours ?? "—") + "</td></tr>").join("") +
       "</tbody></table></div></div></aside>";
-    $("sheetClose").focus();
+    if (!quiet) $("sheetClose").focus();
     $("logForClient").onclick = () => { closeClient(); prefillLog(c); setTab("log"); };
+    if ($("mergeBtn")) $("mergeBtn").onclick = () => doMerge(c);
   }
   const stat = (l, v) => '<div class="stat"><span class="eyebrow">' + l + '</span><div class="v">' + v + "</div></div>";
   function closeClient() { S.openClient = null; $("overlay").innerHTML = ""; }
@@ -975,7 +1025,7 @@ form.log { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100
     const lines = ["date,client,vehicle,service,price,payment,hours,notes"];
     for (const j of [...S.jobs].reverse()) {
       const q = (s) => '"' + String(s ?? "").replace(/"/g, "'") + '"';
-      lines.push([j.date ? isoDate(j.date) : "", q(j.client), q(j.vehicle), q(j.service), j.price ?? q(j.priceRaw), q(j.payment), j.hours ?? "", q(j.notes)].join(","));
+      lines.push([j.date ? isoDate(j.date) : "", q((S.jobClient.get(j.id) || j).name || j.client),q(j.vehicle), q(j.service), j.price ?? q(j.priceRaw), q(j.payment), j.hours ?? "", q(j.notes)].join(","));
     }
     const cl = ["client,visits,lifetime_spend,last_visit,days_since,usual_gap_days,status,has_phone"];
     for (const c of S.clients) cl.push(['"' + c.name.replace(/"/g, "'") + '"', c.visits, c.spend, c.last ? isoDate(c.last) : "", c.since ?? "", c.interval != null ? Math.round(c.interval) : "", c.status, c.phone ? "yes" : "no"].join(","));
@@ -1040,7 +1090,11 @@ form.log { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100
     if (S.tab === "clients") renderClients();
     if (S.tab === "jobs") renderJobs();
     if (S.tab === "log") renderLogForm();
-    if (S.openClient && !S.byId.has(S.openClient)) closeClient();
+    if (S.openClient) {
+      const c = S.clients.find((x) => x.keys.includes(S.openKey));
+      if (!c) closeClient();
+      else if (sigOf(c) !== S.openSig) openClient(c.id, true);
+    }
   }
   let toastTimer;
   function toast(t) { const el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 2600); }
@@ -1078,6 +1132,8 @@ form.log { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100
       return;
     }
     if (e.target.closest("[data-close]")) { closeClient(); return; }
+    const um = e.target.closest("[data-unmerge]");
+    if (um) { undoMerge(um.dataset.unmerge); return; }
     const cl = e.target.closest("[data-client]");
     if (cl && cl.dataset.client) openClient(cl.dataset.client);
   });
@@ -1097,6 +1153,16 @@ form.log { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100
   else {
     use("mcp").then((mcp) => { S.mcp = mcp || null; render(); if (mcp) watchAll(); }).catch(() => { S.mcp = null; render(); });
     use("sample").then((s) => { S.sample = s || null; }).catch(() => { S.sample = null; });
+    use("db").then((db) => {
+      S.db = db || null;
+      if (!db) return;
+      // Saved "same person" merges. Keep the last good set if the subscription dies.
+      db.collection("merges").onSnapshot((snap) => {
+        S.merges = snap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }))
+          .filter((m) => typeof m.a === "string" && typeof m.b === "string" && m.a && m.b);
+        recompute(); render();
+      }, () => {});
+    }).catch(() => { S.db = null; });
   }
 })();
 </script>
